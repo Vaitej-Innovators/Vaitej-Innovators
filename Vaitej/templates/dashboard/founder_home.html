@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Founder Dashboard | Vaitej Ventures</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+
+<body>
+
+<div class="dashboard-layout">
+    {% include "dashboard/sidebar.html" %}
+
+    <main class="dashboard-content">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="glass" style="padding: 1rem; margin-bottom: 2rem; border-left: 4px solid var(--success); color: var(--success);">
+                {{ message }}
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <header class="page-header">
+            <div>
+                <h1>Hello, {{ founder.full_name }}</h1>
+                <p>{{ founder.company_name }} &bull; {{ founder.stage }} &bull; {{ founder.sector }}</p>
+            </div>
+            <div style="text-align: right;">
+                {% if founder.actively_raising %}
+                    <span class="badge badge-success">Actively Raising</span>
+                {% else %}
+                    <span class="badge badge-neutral">Not Raising</span>
+                {% endif %}
+                
+                {% if weeks_elapsed %}
+                <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 6px;">
+                    Active for {{ weeks_elapsed }} weeks
+                </div>
+                {% endif %}
+            </div>
+        </header>
+
+        {% if requests %}
+        <section style="margin-bottom: 2.5rem;">
+            <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 10px; color: var(--text-primary);">
+                Incoming Requests
+                <span style="background: var(--accent-primary); color: white; font-size: 0.75rem; padding: 2px 10px; border-radius: 12px;">
+                    {{ requests|length }}
+                </span>
+            </h3>
+            
+            <div class="matches-grid">
+                {% for req in requests %}
+                <div class="glass match-card" style="border: 1px solid var(--accent-primary); box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);">
+                    
+                    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+                        <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; border: 1px solid var(--border-subtle);">
+                            {{ req.full_name[0] }}
+                        </div>
+                        <div>
+                            <h4 style="margin-bottom: 2px; color: var(--text-primary);">{{ req.fund_name or req.full_name }}</h4>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                {{ req.title }} • {{ req.country }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(99, 102, 241, 0.1); padding: 10px; border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem; color: #c7d2fe;">
+                        <strong style="color: var(--accent-primary);">Match Reason:</strong> {{ req.ai_reason }}
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto;">
+                        <a href="{{ url_for('founder_respond_match', match_id=req.match_id, action='decline') }}" 
+                           class="btn-outline" style="text-align: center; justify-content: center;">Decline</a>
+                        
+                        <a href="{{ url_for('founder_respond_match', match_id=req.match_id, action='accept') }}" 
+                           class="btn-primary" style="text-align: center; justify-content: center;">Accept & Chat</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if ai_alert %}
+        <section class="glass" style="padding: 1.25rem; margin-bottom: 2rem; background: rgba(99,102,241,0.1); border-color: var(--accent-primary); display: flex; gap: 1rem; align-items: center;">
+            <div style="font-size: 1.5rem;">🤖</div>
+            <div>
+                <h4 style="font-weight: 700; color: white; margin-bottom: 2px;">AI Insight</h4>
+                <p style="color: #c7d2fe; margin: 0; font-size: 0.9rem;">{{ ai_alert }}</p>
+            </div>
+        </section>
+        {% endif %}
+
+        <section class="metrics-grid">
+            <div class="glass metric-card">
+                <div>
+                    <h4>Profile Strength</h4>
+                    <div class="metric-value">{{ completion_percent }}%</div>
+                    <div class="metric-progress">
+                        <div class="metric-bar" style="width: {{ completion_percent }}%;"></div>
+                    </div>
+                </div>
+                <div class="metric-hint">
+                    {% if missing_fields %}
+                        Missing: {{ missing_fields[0] }}
+                    {% else %}
+                        All set!
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="glass metric-card">
+                <div>
+                    <h4>Pitch Readiness</h4>
+                    <div class="metric-value" style="color: {% if pitch_score > 75 %}var(--success){% elif pitch_score > 50 %}var(--warning){% else %}var(--danger){% endif %}">
+                        {{ pitch_score }}
+                    </div>
+                </div>
+                <div class="metric-hint">{{ pitch_label }}</div>
+            </div>
+
+            <div class="glass metric-card">
+                <div>
+                    <h4>Active Chats</h4>
+                    <div class="metric-value">{{ active_chats }}</div>
+                </div>
+                <div class="metric-hint">Connected Investors</div>
+            </div>
+
+            <div class="glass metric-card">
+                <div>
+                    <h4>Engagement</h4>
+                    <div class="metric-value">{{ recent_views }}</div>
+                </div>
+                <div class="metric-hint">{{ expressed_interest }} new requests</div>
+            </div>
+        </section>
+
+        <div class="dashboard-grid">
+
+            <section>
+                <h3 style="margin-bottom: 1.25rem; font-weight: 700;">Suggested Actions</h3>
+                <div class="actions-grid">
+                    
+                    {% if missing_fields %}
+                    <div class="action-card">
+                        <h4>Complete Profile</h4>
+                        <p style="flex:1; color: var(--text-secondary); font-size: 0.85rem;">
+                            Boost visibility by adding: {{ missing_fields[:2]|join(', ') }}...
+                        </p>
+                        <a href="{{ url_for('founder_settings') }}" class="btn-primary">Update Now</a>
+                    </div>
+                    {% endif %}
+
+                    <div class="action-card">
+                        <h4>Pitch Deck</h4>
+                        <p style="flex:1; color: var(--text-secondary); font-size: 0.85rem;">
+                            {% if has_deck %}
+                                Analyze your latest deck version.
+                            {% else %}
+                                Upload deck for AI evaluation.
+                            {% endif %}
+                        </p>
+                        <a href="{{ url_for('founder_pitch') }}" class="btn-outline">
+                            {% if has_deck %}Manage Deck{% else %}Upload Deck{% endif %}
+                        </a>
+                    </div>
+
+                    <div class="action-card">
+                        <h4>Investor Matches</h4>
+                        <p style="flex:1; color: var(--text-secondary); font-size: 0.85rem;">
+                            {{ total_matches }} potential investors found.
+                        </p>
+                        <a href="{{ url_for('founder_matches') }}" class="btn-outline">View Matches</a>
+                    </div>
+
+                </div>
+            </section>
+
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                
+                <section class="glass" style="padding: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="font-weight: 700; font-size: 1.1rem; margin: 0;">Traction</h3>
+                        <a href="{{ url_for('founder_traction') }}" style="font-size: 0.8rem; color: var(--accent-primary);">Update</a>
+                    </div>
+                    {% if traction %}
+                    <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse;">
+                        <tr style="color: var(--text-tertiary); border-bottom: 1px solid var(--border-subtle);">
+                            <th style="text-align: left; padding-bottom: 5px;">Month</th>
+                            <th style="text-align: right; padding-bottom: 5px;">Rev</th>
+                            <th style="text-align: right; padding-bottom: 5px;">Burn</th>
+                        </tr>
+                        {% for t in traction %}
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 8px 0;">{{ t.month_label }}</td>
+                            <td style="text-align: right; color: var(--success);">${{ "{:,}".format(t.revenue|int) }}</td>
+                            <td style="text-align: right; color: var(--danger);">${{ "{:,}".format(t.expenses|int) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                    {% else %}
+                    <p style="font-size: 0.85rem; color: var(--text-tertiary); font-style: italic;">No metrics yet.</p>
+                    {% endif %}
+                </section>
+
+                <section class="glass" style="padding: 1.5rem; flex: 1;">
+                    <h3 style="font-weight: 700; font-size: 1.1rem; margin-bottom: 1rem;">Live Activity</h3>
+                    <ul class="activity-list">
+                        {% for item in activity_feed %}
+                        <li>
+                            <div class="activity-icon">
+                                {% if item.type == 'view' %}
+                                    <i data-lucide="eye" style="color: var(--text-tertiary);"></i>
+                                {% elif item.type == 'match' %}
+                                    <i data-lucide="zap" style="color: var(--warning);"></i>
+                                {% else %}
+                                    <i data-lucide="message-circle" style="color: var(--accent-primary);"></i>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <div style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">
+                                    {% if item.type == 'view' %}Profile Viewed{% elif item.type == 'match' %}New Match{% else %}Message{% endif %}
+                                </div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                    {{ item.detail }}
+                                </div>
+                                <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 2px;">
+                                    {{ item.created_at.strftime('%d %b %H:%M') }}
+                                </div>
+                            </div>
+                        </li>
+                        {% else %}
+                        <li style="justify-content: center; color: var(--text-tertiary); font-style: italic;">
+                            No recent activity.
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            </div>
+
+        </div>
+
+    </main>
+</div>
+</body>
+</html>
