@@ -4,6 +4,26 @@
     <title>{{ founder.company_name }} | Deal Room</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Simple Modal Styles for Investment Input */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-box {
+            background: #1e293b;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 400px;
+            border: 1px solid var(--border-subtle);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+    </style>
 </head>
 <body>
 
@@ -12,7 +32,6 @@
 
     <main class="dashboard-content">
 
-        <!-- ================= HEADER ================= -->
         <header class="page-header">
             <div>
                 <h1>{{ founder.company_name }}</h1>
@@ -22,25 +41,34 @@
             </div>
 
             <div class="actions">
-                <a href="{{ url_for('update_investor_match', founder_id=founder.id, action='saved') }}"
-                   class="btn-outline btn-sm">Save</a>
+                {% if match_status == 'declined' %}
+                    <span class="text-secondary" style="font-size: 0.8rem; margin-right: 10px;">Passed Deal</span>
+                    <a href="{{ url_for('update_investor_match', founder_id=founder.id, action='saved') }}"
+                       class="btn-primary btn-sm">
+                       <i data-lucide="rotate-ccw" style="width:14px; margin-right:5px;"></i> Restore to Watchlist
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('update_investor_match', founder_id=founder.id, action='saved') }}"
+                       class="btn-outline btn-sm">Save</a>
 
-                <a href="{{ url_for('update_investor_match', founder_id=founder.id, action='interested') }}"
-                   class="btn-primary btn-sm">Connect</a>
+                    <a href="{{ url_for('update_investor_match', founder_id=founder.id, action='interested') }}"
+                       class="btn-outline btn-sm">Connect</a>
 
-                <a href="{{ url_for('update_investor_match', founder_id=founder.id, action='declined') }}"
-                   class="btn-outline btn-sm text-danger">Pass</a>
+                    <button onclick="openInvestModal()" class="btn-primary btn-sm" style="background: var(--success); color: white; border:none;">
+                        Record Investment
+                    </button>
+
+                    <a href="{{ url_for('update_investor_match', founder_id=founder.id, action='declined') }}"
+                       class="btn-outline btn-sm text-danger">Pass</a>
+                {% endif %}
             </div>
         </header>
 
-        <!-- ================= AI DEAL MEMO ================= -->
         <section class="glass" style="padding:1.5rem; margin-bottom:2rem;">
             <h3>AI Deal Memo</h3>
-
             {% if founder.analysis_json %}
                 {% set analysis = founder.analysis_json | fromjson %}
                 <p><strong>Summary:</strong> {{ analysis.summary }}</p>
-
                 <div class="grid-2">
                     <div>
                         <h4>Strengths</h4>
@@ -59,103 +87,129 @@
                         </ul>
                     </div>
                 </div>
-
-                <p><strong>Verdict:</strong> {{ analysis.verdict }}</p>
+                <p style="margin-top:1rem;"><strong>Verdict:</strong> {{ analysis.verdict }}</p>
             {% else %}
-                <p class="text-secondary">No AI memo available yet.</p>
+                <p class="text-secondary">No AI memo available yet. Upload a deck to generate.</p>
             {% endif %}
         </section>
 
-        <!-- ================= PITCH DECK ================= -->
-        <section class="glass" style="padding:1.5rem; margin-bottom:2rem;">
-            <h3>Pitch Deck</h3>
-            {% if founder.deck_url %}
-                <p>Pitch Score: <strong>{{ founder.deck_score }}/100</strong></p>
-                <a href="{{ founder.deck_url }}" target="_blank" class="btn-primary btn-sm">
-                    View Deck
-                </a>
-            {% else %}
-                <p class="text-secondary">No deck uploaded.</p>
-            {% endif %}
-        </section>
-
-        <!-- ================= TRACTION ================= -->
         <section class="glass" style="padding:1.5rem; margin-bottom:2rem;">
             <h3>Traction</h3>
-            <canvas id="tractionChart"></canvas>
+            <div style="height: 300px;">
+                <canvas id="tractionChart"></canvas>
+            </div>
         </section>
 
-        <!-- ================= DUE DILIGENCE ================= -->
         <section class="glass" style="padding:1.5rem; margin-bottom:2rem;">
             <h3>Due Diligence Checklist</h3>
-
             <form id="ddForm">
-                {% for key in [
-                    'team', 'market', 'product', 'traction',
-                    'unit_economics', 'legal', 'moat'
-                ] %}
-                <label style="display:block; margin-bottom:6px;">
-                    <input type="checkbox"
-                           onchange="saveDD()"
-                           {% if checklist.get(key) %}checked{% endif %}
-                           data-key="{{ key }}">
-                    {{ key.replace('_',' ') | title }}
-                </label>
-                {% endfor %}
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    {% for key in ['team', 'market', 'product', 'traction', 'unit_economics', 'legal', 'moat'] %}
+                    <label style="display:flex; gap: 8px; align-items:center; cursor: pointer;">
+                        <input type="checkbox"
+                               onchange="saveDD()"
+                               {% if checklist.get(key) %}checked{% endif %}
+                               data-key="{{ key }}">
+                        {{ key.replace('_',' ') | title }}
+                    </label>
+                    {% endfor %}
+                </div>
             </form>
         </section>
 
-        <!-- ================= PRIVATE NOTES ================= -->
         <section class="glass" style="padding:1.5rem;">
             <h3>Private Notes</h3>
             <textarea id="ddNotes"
                       onblur="saveDD()"
                       placeholder="Your private investment notes..."
-                      style="width:100%; min-height:120px;">{{ dd_data.private_notes if dd_data }}</textarea>
+                      style="width:100%; min-height:120px; background: rgba(0,0,0,0.2); color: white; padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle);">{{ dd_data.private_notes if dd_data }}</textarea>
         </section>
 
     </main>
 </div>
 
+<div id="investModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3 style="margin-bottom: 1rem;">Confirm Investment</h3>
+        <p class="text-secondary" style="margin-bottom: 1.5rem;">
+            Enter the final amount deployed. This will deduct from your Dry Powder and add this startup to your Portfolio.
+        </p>
+        
+        <form action="{{ url_for('mark_invested', founder_id=founder.id) }}" method="POST">
+            <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem;">Investment Amount ($)</label>
+                <input type="number" name="amount" required placeholder="e.g. 50000" 
+                       style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); color: white; border-radius: 6px;">
+            </div>
+            
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="closeInvestModal()" class="btn-outline">Cancel</button>
+                <button type="submit" class="btn-primary" style="background: var(--success);">Confirm & Add to Portfolio</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
-/* --------- Traction Chart ---------- */
-const ctx = document.getElementById('tractionChart');
-new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: {{ chart_labels|safe }},
-        datasets: [
-            {
-                label: 'Revenue',
-                data: {{ chart_rev|safe }},
-                borderWidth: 2
-            },
-            {
-                label: 'Expenses',
-                data: {{ chart_exp|safe }},
-                borderWidth: 2
-            }
-        ]
+    /* --------- Modal Logic ---------- */
+    function openInvestModal() {
+        document.getElementById('investModal').style.display = 'flex';
     }
-});
+    function closeInvestModal() {
+        document.getElementById('investModal').style.display = 'none';
+    }
 
-/* --------- Save DD Data ---------- */
-function saveDD() {
-    const checklist = {};
-    document.querySelectorAll('#ddForm input').forEach(el => {
-        checklist[el.dataset.key] = el.checked;
-    });
+    /* --------- Traction Chart ---------- */
+    const ctx = document.getElementById('tractionChart');
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {{ chart_labels|safe }},
+                datasets: [
+                    {
+                        label: 'Revenue',
+                        data: {{ chart_rev|safe }},
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Expenses',
+                        data: {{ chart_exp|safe }},
+                        borderColor: '#ef4444',
+                        borderDash: [5, 5],
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } } }
+            }
+        });
+    }
 
-    fetch('/api/investor/save_dd', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-            founder_id: {{ founder.id }},
-            notes: document.getElementById('ddNotes').value,
-            checklist: checklist
-        })
-    });
-}
+    /* --------- Save DD Logic ---------- */
+    function saveDD() {
+        const checklist = {};
+        document.querySelectorAll('#ddForm input').forEach(el => {
+            checklist[el.dataset.key] = el.checked;
+        });
+
+        fetch('/api/investor/save_dd', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                founder_id: {{ founder.id }},
+                notes: document.getElementById('ddNotes').value,
+                checklist: checklist
+            })
+        });
+    }
 </script>
 
 </body>

@@ -51,6 +51,60 @@
             background: linear-gradient(90deg, #6366f1, #22c55e);
         }
 
+        /* --- NEW LOGO STYLES --- */
+        .identity-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .logo-upload-box {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.05);
+            border: 2px dashed rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        
+        .logo-upload-box:hover {
+            border-color: var(--accent-primary, #6366f1);
+        }
+
+        .logo-upload-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .logo-upload-text {
+            position: absolute;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .logo-upload-box:hover .logo-upload-text {
+            opacity: 1;
+        }
+
+        #logoInput { display: none; }
+        /* ----------------------- */
+
         .form-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -96,6 +150,13 @@
     {% include "dashboard/sidebar.html" %}
 
     <main class="dashboard-content">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, msg in messages %}
+            <div class="toast {{ category }}">{{ msg }}</div>
+          {% endfor %}
+        {% endwith %}
+
         <header class="page-header">
             <h1>Founder Settings</h1>
             <p>Build credibility, improve visibility, and attract the right investors.</p>
@@ -104,7 +165,6 @@
         <form method="post" enctype="multipart/form-data">
             <div class="settings-wrapper">
 
-                <!-- PROFILE COMPLETION -->
                 <div class="settings-card completion-card">
                     <div>
                         <h3>Profile Strength</h3>
@@ -120,41 +180,61 @@
                     </div>
                 </div>
 
-                <!-- IDENTITY -->
                 <div class="settings-card">
-                    <h3>Founder Identity</h3>
-
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Full Name</label>
-                            <input value="{{ data.full_name }}" disabled>
+                    <h3>Founder Identity & Logo</h3>
+                    
+                    <div class="identity-grid" style="margin-top: 1.5rem;">
+                        
+                        <div style="text-align: center;">
+                            <label for="logoInput" class="logo-upload-box">
+                                {% if data.logo_url %}
+                                    <img src="{{ data.logo_url }}" id="logoPreview" alt="Logo">
+                                    <div class="logo-upload-text">Change</div>
+                                {% else %}
+                                    <span class="text-secondary" id="logoPlaceholder" style="font-size: 0.8rem;">Upload Logo</span>
+                                    <img id="logoPreview" style="display:none;">
+                                {% endif %}
+                            </label>
+                            <input type="file" name="logo" id="logoInput" accept="image/*" onchange="previewLogo(this)">
+                            <p class="text-secondary small" style="margin-top:0.5rem;">JPG/PNG only</p>
                         </div>
 
-                        <div class="form-group">
-                            <label>Email</label>
-                            <input value="{{ data.email }}" disabled>
-                        </div>
+                        <div class="form-grid" style="margin-top: 0;">
+                            <div class="form-group">
+                                <label>Full Name</label>
+                                <input value="{{ data.full_name }}" disabled>
+                            </div>
 
-                        <div class="form-group full">
-                            <label>Location</label>
-                            <input name="location" value="{{ data.location or data.country }}">
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input value="{{ data.email }}" disabled>
+                            </div>
+
+                            <div class="form-group full">
+                                <label>Location</label>
+                                <input name="location" value="{{ data.location or data.country }}">
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- STARTUP -->
                 <div class="settings-card">
                     <h3>Startup Profile</h3>
 
                     <div class="form-grid">
-                        <div class="form-group">
+                        <div class="form-group full">
                             <label>Company Name</label>
                             <input name="company_name" value="{{ data.company_name }}">
                         </div>
 
                         <div class="form-group">
                             <label>Website</label>
-                            <input name="website_url" value="{{ data.website_url or '' }}">
+                            <input name="website_url" value="{{ data.website_url or '' }}" placeholder="https://">
+                        </div>
+
+                        <div class="form-group">
+                            <label>LinkedIn Profile URL</label>
+                            <input name="linkedin_url" value="{{ data.linkedin_url or '' }}" placeholder="https://linkedin.com/in/...">
                         </div>
 
                         <div class="form-group full">
@@ -164,7 +244,6 @@
                     </div>
                 </div>
 
-                <!-- MARKET -->
                 <div class="settings-card">
                     <h3>Market & Product</h3>
 
@@ -191,7 +270,6 @@
                     </div>
                 </div>
 
-                <!-- FUNDRAISING -->
                 <div class="settings-card">
                     <h3>Fundraising</h3>
 
@@ -205,39 +283,41 @@
                             <label>Minimum Check Size ($)</label>
                             <input name="min_check_size" value="{{ data.min_check_size or '' }}">
                         </div>
+                        
+                        <div class="form-group full" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" name="actively_raising" id="raising" {% if data.actively_raising %}checked{% endif %} style="width: auto;">
+                            <label for="raising" style="margin:0; cursor: pointer;">Actively Raising? (Visible to investors)</label>
+                        </div>
                     </div>
                 </div>
 
-                <!-- VERIFICATION -->
-<div class="settings-card">
-    <h3>Verification</h3>
-    <p class="text-secondary">
-        Verified founders rank higher and gain stronger investor trust.
-    </p>
+                <div class="settings-card">
+                    <h3>Verification</h3>
+                    <p class="text-secondary">
+                        Verified founders rank higher and gain stronger investor trust.
+                    </p>
 
-    <div class="settings-footer" style="margin-top:1rem;">
-        <div>
-            {% if data.verification_status == 'verified' %}
-                <span class="status-pill verified">Verified</span>
-            {% elif data.verification_status == 'pending' %}
-                <span class="status-pill pending">Pending Review</span>
-            {% else %}
-                <span class="status-pill unverified">Unverified</span>
-            {% endif %}
-        </div>
+                    <div class="settings-footer" style="margin-top:1rem;">
+                        <div>
+                            {% if data.verification_status == 'verified' %}
+                                <span class="status-pill verified">Verified ✅</span>
+                            {% elif data.verification_status == 'pending' %}
+                                <span class="status-pill pending">Pending Review ⏳</span>
+                            {% else %}
+                                <span class="status-pill unverified">Unverified ⚪</span>
+                            {% endif %}
+                        </div>
 
-        {% if data.verification_status == 'unverified' %}
-            <form method="post" action="{{ url_for('request_founder_verification') }}">
-                <button type="submit" class="btn-outline">
-                    Request Verification
-                </button>
-            </form>
-        {% endif %}
-    </div>
-</div>
+                        {% if data.verification_status == 'unverified' or data.verification_status == 'rejected' %}
+                            <button type="submit" 
+                                    formaction="{{ url_for('request_founder_verification') }}" 
+                                    class="btn-outline">
+                                Request Verification Badge
+                            </button>
+                        {% endif %}
+                    </div>
+                </div>
 
-
-                <!-- FOOTER -->
                 <div class="settings-footer">
                     <span class="text-secondary">
                         Changes affect investor ranking immediately.
@@ -252,6 +332,24 @@
 
     </main>
 </div>
+
+<script>
+    function previewLogo(input) {
+        if (input.files && input.files[0]) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var img = document.getElementById('logoPreview');
+                var placeholder = document.getElementById('logoPlaceholder');
+                
+                img.src = e.target.result;
+                img.style.display = 'block';
+                
+                if (placeholder) placeholder.style.display = 'none';
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+</script>
 
 </body>
 </html>

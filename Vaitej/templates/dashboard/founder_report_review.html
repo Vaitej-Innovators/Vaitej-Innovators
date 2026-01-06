@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Review Investment Report | Vaitej Ventures</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .report-preview {
+            background: #fff;
+            color: #333; /* Dark text for readability on paper-like bg */
+            padding: 3rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        .report-preview h3 {
+            color: #111;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 0.5rem;
+            margin-top: 1.5rem;
+        }
+        .report-preview p, .report-preview li {
+            font-size: 1rem;
+            color: #444;
+        }
+        .review-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-layout">
+    {% include "dashboard/sidebar.html" %}
+
+    <main class="dashboard-content">
+
+        <div class="review-header">
+            <div>
+                <h1 style="margin-bottom: 0.5rem;">Review Your Investment Report</h1>
+                <p class="text-secondary">
+                    This is what investors will see. It combines your Deck Analysis and Q&A Defense.
+                </p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <a href="{{ url_for('founder_pitch') }}" class="btn-outline">Cancel</a>
+                
+                <form action="{{ url_for('publish_deck', deck_id=deck.id) }}" method="POST">
+                    <input type="hidden" name="report_content" value="{{ report_html }}">
+                    <button type="submit" class="btn-primary" style="background: #22c55e; border-color: #22c55e;">
+                        <i data-lucide="check-circle" style="width: 18px; margin-right: 8px;"></i> Approve & Publish
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="report-preview">
+            <div style="text-align: center; margin-bottom: 2rem; border-bottom: 1px solid #eee; padding-bottom: 1rem;">
+                <h2 style="margin: 0; color: #000;">Investment Memo: {{ deck.company_name or 'Your Startup' }}</h2>
+                <span style="background: #eee; color: #555; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">
+                    Readiness Score: {{ deck.deck_score }}/100
+                </span>
+            </div>
+
+            {{ report_html | safe }}
+        </div>
+
+    </main>
+</div>
+
+<script>
+    lucide.createIcons();
+</script>
+
+</body>
+</html>

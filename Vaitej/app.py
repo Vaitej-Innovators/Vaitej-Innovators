@@ -189,7 +189,26 @@ def calculate_match_score(founder, investor, pitch_score):
         score += 5
 
     return score, ", ".join(reasons)
+class Match(db.Model):
+    __tablename__ = 'matches'
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Note: These link to profiles, not the User table directly
+    founder_id = db.Column(db.Integer, db.ForeignKey('founder_profiles.id'), nullable=False)
+    investor_id = db.Column(db.Integer, db.ForeignKey('investor_profiles.id'), nullable=False)
+    
+    match_score = db.Column(db.Integer, default=0)
+    
+    # Your schema uses: 'new', 'interested', 'saved', 'declined', 'due_diligence', 'invested', 'connected'
+    status = db.Column(db.String(50), default='new') 
+    
+    ai_reason = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships to access names/logos easily
+    founder = db.relationship('FounderProfile', backref='matches')
+    investor = db.relationship('InvestorProfile', backref='matches')
 # -------------------------------------------------
 # ENTRY & AUTH ROUTES
 # -------------------------------------------------
@@ -430,9 +449,10 @@ def founder_home():
 # -------------------------------------------------
 @app.route("/founder/request/<int:match_id>/<action>")
 def founder_respond_match(match_id, action):
-    if session.get("role") != "founder": return redirect(url_for("login"))
+    if session.get("role") != "founder": 
+        return redirect(url_for("login"))
     
-    # Verify ownership
+    # 1. Verify Match Ownership
     match = db.session.execute(text("""
         SELECT m.*, f.user_id 
         FROM matches m 
@@ -440,32 +460,47 @@ def founder_respond_match(match_id, action):
         WHERE m.id = :mid
     """), {"mid": match_id}).mappings().first()
 
+    # Security check: Ensure the current logged-in user owns this founder profile
     if not match or match.user_id != session.get("user_id"):
+        flash("Unauthorized request.", "error")
         return redirect(url_for("founder_home"))
 
     if action == 'accept':
-        # 1. Update Match Status to 'connected'
+        # 2. Update Match Status
         db.session.execute(text("UPDATE matches SET status = 'connected' WHERE id = :mid"), {"mid": match_id})
         
-        # 2. Ensure Conversation Exists (It should, but safety first)
-        db.session.execute(text("""
-            INSERT IGNORE INTO conversations (founder_id, investor_id, created_at)
-            VALUES (:fid, :iid, NOW())
-        """), {"fid": match.founder_id, "iid": match.investor_id})
+        # 3. Safe Conversation Creation (Check existence first)
+        existing_convo = db.session.execute(text("""
+            SELECT id FROM conversations 
+            WHERE founder_id = :fid AND investor_id = :iid
+        """), {"fid": match.founder_id, "iid": match.investor_id}).fetchone()
+
+        if not existing_convo:
+            # Create new conversation
+            db.session.execute(text("""
+                INSERT INTO conversations (founder_id, investor_id, created_at)
+                VALUES (:fid, :iid, NOW())
+            """), {"fid": match.founder_id, "iid": match.investor_id})
         
-        # 3. Send Welcome Message (Optional: System message)
+        db.session.commit()
+        
         flash("Connection accepted! You can now chat.", "success")
         return redirect(url_for("founder_messages"))
 
     elif action == 'decline':
-        # Update status to declined and Remove Conversation if it exists
+        # 4. Handle Decline
         db.session.execute(text("UPDATE matches SET status = 'declined' WHERE id = :mid"), {"mid": match_id})
+        
+        # Remove conversation if it existed previously
         db.session.execute(text("DELETE FROM conversations WHERE founder_id=:fid AND investor_id=:iid"), 
                            {"fid": match.founder_id, "iid": match.investor_id})
+        
+        db.session.commit()
         flash("Request declined.", "info")
 
-    db.session.commit()
     return redirect(url_for("founder_home"))
+
+
 # -------------------------------------------------
 # 2. FOUNDER MATCHES
 # -------------------------------------------------
@@ -539,25 +574,53 @@ def update_match_status(match_id, action):
 # -------------------------------------------------
 # 3. PITCH HUB & PUBLISHING
 # -------------------------------------------------
+# -------------------------------------------------
+# 3. PITCH HUB & PUBLISHING
+# -------------------------------------------------
 @app.route("/founder/pitch")
 def founder_pitch():
     if session.get("role") != "founder": return redirect(url_for("login"))
     user_id = session.get("user_id")
 
     founder = db.session.execute(text("SELECT id FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
+    
+    # 1. Get Latest Deck
     deck = db.session.execute(text("""
         SELECT * FROM pitch_decks WHERE founder_id = :fid ORDER BY created_at DESC LIMIT 1
     """), {"fid": founder.id}).fetchone()
 
     analysis = None
-    if deck and deck.analysis_json:
-        analysis = safe_json_load(deck.analysis_json)
-            
     report = None
-    if deck:
-        report = db.session.execute(text("SELECT id FROM investment_reports WHERE deck_id=:did ORDER BY id DESC LIMIT 1"), {"did": deck.id}).fetchone()
+    official_qa = None
+    last_simulation = None
 
-    return render_template("dashboard/founder_pitch.html", deck=deck, analysis=analysis, report=report)
+    if deck:
+        if deck.analysis_json:
+            analysis = safe_json_load(deck.analysis_json)
+            
+        # 2. Get Report (if exists)
+        report = db.session.execute(text("SELECT id FROM investment_reports WHERE deck_id=:did ORDER BY id DESC LIMIT 1"), {"did": deck.id}).fetchone()
+        
+        # 3. Get Latest OFFICIAL Q&A (Required for Publishing)
+        official_qa = db.session.execute(text("""
+            SELECT * FROM qa_sessions 
+            WHERE deck_id=:did AND session_type='official' 
+            ORDER BY id DESC LIMIT 1
+        """), {"did": deck.id}).fetchone()
+
+        # 4. Get Latest TRAINING Q&A (For Practice Stats)
+        last_simulation = db.session.execute(text("""
+            SELECT * FROM qa_sessions 
+            WHERE deck_id=:did AND session_type='training' 
+            ORDER BY id DESC LIMIT 1
+        """), {"did": deck.id}).fetchone()
+
+    return render_template("dashboard/founder_pitch.html", 
+                           deck=deck, 
+                           analysis=analysis, 
+                           report=report, 
+                           official_qa=official_qa,       # Passed as 'official_qa'
+                           last_simulation=last_simulation) # Passed as 'last_simulation'
 
 @app.route("/founder/pitch/upload", methods=["POST"])
 def upload_pitch():
@@ -569,23 +632,20 @@ def upload_pitch():
         return redirect(url_for("founder_pitch"))
 
     user_id = session.get("user_id")
-    # Secure filename
+    founder = db.session.execute(text("SELECT id FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
+
+    # 1. Save File
     original_filename = secure_filename(file.filename)
     filename = f"pitch_{user_id}_{int(time.time())}_{original_filename}"
     file_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(file_path)
     
     try:
-        # Use new Google GenAI Client
+        # 2. AI Analysis
         client = get_ai_client()
-        
-        # Upload file (Fix for Unexpected Keyword Error)
-        print(f"Uploading {file_path} to Gemini...")
         uploaded_file = client.files.upload(file=file_path)
 
-        # Wait for processing (Critical for PDFs)
         while uploaded_file.state.name == "PROCESSING":
-            print("Processing file...")
             time.sleep(1)
             uploaded_file = client.files.get(name=uploaded_file.name)
 
@@ -593,8 +653,8 @@ def upload_pitch():
             raise Exception("AI failed to process the PDF.")
 
         prompt = """
-        You are a top-tier Venture Capital Analyst. Analyze this pitch deck PDF.
-        Output strict JSON (no markdown):
+        You are a Venture Capital Analyst. Analyze this pitch deck PDF.
+        Output strict JSON:
         {
             "score": <0-100 integer>,
             "summary": "<2 sentence summary>",
@@ -604,7 +664,6 @@ def upload_pitch():
         }
         """
         
-        # Generate Content (Fixed Model Name)
         response = client.models.generate_content(
             model="gemini-2.5-flash", 
             contents=[uploaded_file, prompt]
@@ -615,52 +674,160 @@ def upload_pitch():
         
     except Exception as e:
         print(f"AI Error: {e}")
-        flash(f"AI Analysis Failed: {str(e)}")
         analysis_data = {"score": 0, "summary": "Analysis failed.", "strengths": [], "weaknesses": [], "verdict": "Error"}
 
-    # Database Insert
+    # 3. Save Deck to DB
     file_url = f"/static/uploads/{filename}"
-    founder_id = db.session.execute(text("SELECT id FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).scalar()
-
-    db.session.execute(text("""
-        INSERT INTO pitch_decks (founder_id, file_url, deck_score, analysis_json, feedback_summary) 
-        VALUES (:fid, :url, :score, :json, :summ)
+    
+    result = db.session.execute(text("""
+        INSERT INTO pitch_decks (founder_id, file_url, deck_score, analysis_json, feedback_summary, is_published) 
+        VALUES (:fid, :url, :score, :json, :summ, 0)
     """), {
-        "fid": founder_id, "url": file_url, 
+        "fid": founder.id, "url": file_url, 
         "score": analysis_data.get("score", 0),
         "json": json.dumps(analysis_data),
         "summ": analysis_data.get("summary")
     })
+    
+    deck_id = result.lastrowid
+
+    # 4. AUTO-START Q&A SESSION (New Logic)
+    qa_result = db.session.execute(text("""
+        INSERT INTO qa_sessions (founder_id, deck_id, transcript_json, status, session_score)
+        VALUES (:fid, :did, '[]', 'in_progress', 0)
+    """), {"fid": founder.id, "did": deck_id})
+    
     db.session.commit()
 
-    flash("Pitch deck uploaded and analyzed successfully!")
-    return redirect(url_for("founder_pitch"))
+    flash("Deck analyzed! Now, please answer a few investor questions to complete your report.", "info")
+    return redirect(url_for("founder_qa_interface", session_id=qa_result.lastrowid))
 
-@app.route("/founder/pitch/publish/<int:deck_id>")
-def publish_deck(deck_id):
+
+@app.route("/founder/pitch/review/<int:deck_id>")
+def review_pitch_report(deck_id):
     if session.get("role") != "founder": return redirect(url_for("login"))
     user_id = session.get("user_id")
     
     founder = db.session.execute(text("SELECT id FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
-    deck = db.session.execute(text("SELECT id, deck_score FROM pitch_decks WHERE id=:did AND founder_id=:fid"), {"did": deck_id, "fid": founder.id}).fetchone()
     
-    if not deck or deck.deck_score < 70:
-        flash("Score too low to publish.")
+    # Fetch Deck
+    deck = db.session.execute(text("SELECT * FROM pitch_decks WHERE id=:did AND founder_id=:fid"), {"did": deck_id, "fid": founder.id}).fetchone()
+    
+    # Fetch OFFICIAL Q&A Session (Updated Logic)
+    qa_session = db.session.execute(text("""
+        SELECT * FROM qa_sessions 
+        WHERE deck_id=:did AND session_type='official' 
+        ORDER BY id DESC LIMIT 1
+    """), {"did": deck_id}).fetchone()
+    
+    if not deck: return redirect(url_for("founder_pitch"))
+
+    # Validation: Ensure Official Q&A is done
+    if not qa_session or qa_session.status != 'completed':
+        flash("You must complete the Official Q&A session before generating the report.", "warning")
         return redirect(url_for("founder_pitch"))
 
-    db.session.execute(text("UPDATE pitch_decks SET is_published=1 WHERE id=:did"), {"did": deck_id})
+    # Generate Combined Report (Deck Analysis + Q&A Performance)
+    try:
+        qa_transcript = qa_session.transcript_json if qa_session else "[]"
+        deck_analysis = deck.analysis_json
+        
+        client = get_ai_client()
+        prompt = f"""
+        Generate a final 'Investment Memo' for investors based on this startup's data.
+        
+        1. Pitch Deck Analysis: {deck_analysis}
+        2. Founder Q&A Transcript: {qa_transcript}
+        
+        Output valid HTML (no markdown, no ```html tags) with these exact sections:
+        <div class="report-section">
+            <h3>Executive Summary</h3>
+            <p>...</p>
+        </div>
+        <div class="report-section">
+            <h3>Key Strengths (Validated)</h3>
+            <ul>...</ul>
+        </div>
+        <div class="report-section">
+            <h3>Founder Defense & Q&A Highlights</h3>
+            <p>Summarize how the founder handled hard questions.</p>
+        </div>
+        <div class="report-section">
+            <h3>Risk Assessment</h3>
+            <p>...</p>
+        </div>
+        """
+        
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=prompt
+        )
+        report_preview = response.text.replace("```html", "").replace("```", "").strip()
+        
+    except Exception as e:
+        report_preview = f"<p>Error generating report: {str(e)}</p>"
+
+    return render_template("dashboard/founder_report_review.html", 
+                           deck=deck, 
+                           report_html=report_preview, 
+                           qa_session=qa_session)
+
+
+@app.route("/founder/pitch/publish/<int:deck_id>", methods=["POST"])
+def publish_deck(deck_id):
+    if session.get("role") != "founder": return redirect(url_for("login"))
+    
+    user_id = session.get("user_id")
+    founder = db.session.execute(text("SELECT id FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
+    
+    # Get the approved report HTML from the form
+    final_report_html = request.form.get("report_content")
+    
+    # 1. Save Report to Investment Reports Table
+    db.session.execute(text("""
+        INSERT INTO investment_reports (founder_id, deck_id, report_content, created_at)
+        VALUES (:fid, :did, :content, NOW())
+    """), {"fid": founder.id, "did": deck_id, "content": final_report_html})
+    
+    # 2. Mark Deck as Published
+    db.session.execute(text("""
+        UPDATE pitch_decks SET is_published = 1 WHERE id = :did AND founder_id = :fid
+    """), {"did": deck_id, "fid": founder.id})
+    
     db.session.commit()
-    flash("Deck published to high-match investors!")
+    
+    flash("Success! Your Pitch Deck and Investment Report are now live for investors.", "success")
     return redirect(url_for("founder_pitch"))
 
+# @app.route("/founder/pitch/publish/<int:deck_id>")
+# def publish_deck(deck_id):
+#     if session.get("role") != "founder": return redirect(url_for("login"))
+#     user_id = session.get("user_id")
+    
+#     founder = db.session.execute(text("SELECT id FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
+#     deck = db.session.execute(text("SELECT id, deck_score FROM pitch_decks WHERE id=:did AND founder_id=:fid"), {"did": deck_id, "fid": founder.id}).fetchone()
+    
+#     if not deck or deck.deck_score < 70:
+#         flash("Score too low to publish.")
+#         return redirect(url_for("founder_pitch"))
+
+#     db.session.execute(text("UPDATE pitch_decks SET is_published=1 WHERE id=:did"), {"did": deck_id})
+#     db.session.commit()
+#     flash("Deck published to high-match investors!")
+#     return redirect(url_for("founder_pitch"))
+
 # -------------------------------------------------
-# 4. AI Q&A SIMULATOR
+# 2. UPDATED START SESSION (Accepts Mode)
 # -------------------------------------------------
-@app.route("/founder/qa/start")
-def start_qa_session():
+@app.route("/founder/qa/start/<mode>")
+def start_qa_session(mode):
     if session.get("role") != "founder": return redirect(url_for("login"))
     user_id = session.get("user_id")
     
+    # Validate Mode
+    if mode not in ['training', 'official']:
+        mode = 'training'
+
     founder = db.session.execute(text("SELECT id FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
     deck = db.session.execute(text("SELECT id FROM pitch_decks WHERE founder_id=:fid ORDER BY created_at DESC LIMIT 1"), {"fid": founder.id}).fetchone()
     
@@ -668,14 +835,17 @@ def start_qa_session():
         flash("Upload a pitch deck first.")
         return redirect(url_for("founder_pitch"))
 
+    # Create Session with Type
     result = db.session.execute(text("""
-        INSERT INTO qa_sessions (founder_id, deck_id, transcript_json, status, session_score)
-        VALUES (:fid, :did, '[]', 'in_progress', 0)
-    """), {"fid": founder.id, "did": deck.id})
+        INSERT INTO qa_sessions (founder_id, deck_id, transcript_json, status, session_score, session_type)
+        VALUES (:fid, :did, '[]', 'in_progress', 0, :stype)
+    """), {"fid": founder.id, "did": deck.id, "stype": mode})
     db.session.commit()
     
+    # Redirect to the Chat Interface
     return redirect(url_for("founder_qa_interface", session_id=result.lastrowid))
 
+    
 @app.route("/founder/qa/<int:session_id>")
 def founder_qa_interface(session_id):
     if session.get("role") != "founder": return redirect(url_for("login"))
@@ -685,6 +855,8 @@ def founder_qa_interface(session_id):
         
     transcript = safe_json_load(row.transcript_json)
     return render_template("dashboard/founder_qa.html", qa_session=row, transcript=transcript)
+
+# In app.py (Replace the api_qa_chat function)
 
 @app.route("/api/qa/chat", methods=["POST"])
 def api_qa_chat():
@@ -696,24 +868,58 @@ def api_qa_chat():
     deck = db.session.execute(text("SELECT analysis_json FROM pitch_decks WHERE id=:did"), {"did": qa_session.deck_id}).fetchone()
     
     transcript = safe_json_load(qa_session.transcript_json)
-    deck_context = deck.analysis_json if deck and deck.analysis_json else "No analysis available."
+    
+    # Update transcript with user message immediately
+    if user_msg: 
+        transcript.append({"role": "founder", "text": user_msg})
 
-    client = get_ai_client()
+    # 1. Calculate Turns
+    turn_count = len(transcript) // 2
+    max_turns = 15
+    min_turns = 10
+    
+    # 2. Check Termination Condition
+    if turn_count >= max_turns:
+        db.session.execute(text("UPDATE qa_sessions SET status='completed', session_score=85, transcript_json=:tj WHERE id=:sid"), {"tj": json.dumps(transcript), "sid": session_id})
+        db.session.commit()
+        return jsonify({"reply": "Alright, I've seen enough. I'll review your file and get back to you. (Session Ended)", "finished": True})
+
+    # 3. Context & Prompt Engineering
+    deck_context = deck.analysis_json if deck and deck.analysis_json else "No analysis available."
+    
+    # Adaptive Stage Logic
+    if turn_count < 3:
+        focus = "The Basics & Vision. Test their clarity."
+    elif turn_count < 10:
+        focus = "The Drill. Pick ONE specific weakness (Competition, Financials, or Go-To-Market) and hammer it. Be skeptical."
+    else:
+        focus = "Closing. Ask about deal terms, timeline, or exit strategy. If satisfied, type [FINISHED]."
+
     system_prompt = f"""
-    You are a tough, skeptical VC. Interview this founder.
-    Deck Analysis: {deck_context}
-    History: {json.dumps(transcript)}
-    Instructions:
-    1. Ask hard questions based on deck weaknesses.
-    2. Critique answers briefly.
-    3. Say "[FINISHED]" after 5 turns.
+    You are a cynical, sharp Venture Capital Partner. You are interviewing a founder.
+    
+    YOUR PERSONA:
+    - You are not a generic AI. You sound like a human investor who is tired of buzzwords.
+    - You acknowledge the founder's answer briefly ("Okay, fair point on revenue...") but then immediately find the next hole in their logic ("...but your CAC is significantly higher than industry average.").
+    - You are direct, slightly impatient, and focused on risk.
+
+    CONTEXT:
+    - Deck Analysis: {deck_context}
+    - Current Turn: {turn_count + 1} / {max_turns}
+    - Focus for this turn: {focus}
+    - History: {json.dumps(transcript)}
+
+    INSTRUCTIONS:
+    1. **Bridge & Pivot**: Start by reacting to their last point (agree, disagree, or dismiss). Then pivot to your new question.
+    2. **One Question Only**: Ask ONE complex, multi-part question if needed, but do not ask a list of 5 separate things.
+    3. **No Fluff**: Do not say "That is an interesting answer." Say "That's ambitious, but..."
+    4. **Termination**: You must continue until at least turn {min_turns}. After turn {min_turns}, if you have enough info, end with [FINISHED].
+    
+    Output plain text only. No markdown formatting like **bold** or # Headers.
     """
     
     try:
-        if user_msg: 
-            transcript.append({"role": "founder", "text": user_msg})
-        
-        # Fixed Model Name
+        client = get_ai_client()
         response = client.models.generate_content(
             model="gemini-2.5-flash", 
             contents=system_prompt
@@ -724,7 +930,8 @@ def api_qa_chat():
         if "[FINISHED]" in ai_text:
             ai_text = ai_text.replace("[FINISHED]", "").strip()
             finished = True
-            db.session.execute(text("UPDATE qa_sessions SET status='completed', session_score=85 WHERE id=:sid"), {"sid": session_id})
+            final_score = min(100, 50 + (len(transcript) * 2))
+            db.session.execute(text("UPDATE qa_sessions SET status='completed', session_score=:sc WHERE id=:sid"), {"sc": final_score, "sid": session_id})
         
         transcript.append({"role": "investor", "text": ai_text})
         
@@ -736,6 +943,7 @@ def api_qa_chat():
     except Exception as e:
         print(f"QA Error: {e}")
         return jsonify({"error": str(e)}), 500
+    
 
 # -------------------------------------------------
 # 5. REPORT GENERATION
@@ -956,6 +1164,9 @@ def api_send_message():
     return {"status": "success"}
 
 
+# -------------------------------------------------
+# 🟢 FOUNDER SETTINGS (UPDATED WITH LINKEDIN & VERIFICATION)
+# -------------------------------------------------
 @app.route("/founder/settings", methods=["GET", "POST"])
 def founder_settings():
     if session.get("role") != "founder":
@@ -964,29 +1175,30 @@ def founder_settings():
     user_id = session["user_id"]
 
     # -------------------------------
-    # FETCH DATA (SOURCE OF TRUTH)
-    # -------------------------------
-    data = db.session.execute(text("""
-        SELECT f.*, u.full_name, u.email, u.phone, u.country
-        FROM founder_profiles f
-        JOIN users u ON u.id = f.user_id
-        WHERE f.user_id = :uid
-    """), {"uid": user_id}).mappings().first()
-
-    if not data:
-        return redirect(url_for("register", role="founder"))
-
-    # -------------------------------
     # POST → UPDATE PROFILE
     # -------------------------------
     if request.method == "POST":
-        db.session.execute(text("""
+        
+        # --- 1. Handle Logo Upload ---
+        logo_url = None
+        if "logo" in request.files:
+            file = request.files["logo"]
+            if file and file.filename:
+                # Secure filename and save
+                filename = secure_filename(f"logo_{user_id}_{int(time.time())}_{file.filename}")
+                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(file_path)
+                logo_url = f"/static/uploads/{filename}"
+
+        # --- 2. Build Update Query ---
+        # Added 'linkedin_url' to the SET clause
+        update_query = """
             UPDATE founder_profiles
             SET
                 company_name = :company_name,
                 tagline = :tagline,
                 website_url = :website_url,
-                linkedin_url = :linkedin_url,
+                linkedin_url = :linkedin_url, 
                 location = :location,
                 stage = :stage,
                 sector = :sector,
@@ -996,8 +1208,10 @@ def founder_settings():
                 raise_target = :raise_target,
                 min_check_size = :min_check_size,
                 actively_raising = :actively_raising
-            WHERE user_id = :uid
-        """), {
+        """
+        
+        # Added 'linkedin_url' to the parameters
+        params = {
             "company_name": request.form.get("company_name"),
             "tagline": request.form.get("tagline"),
             "website_url": request.form.get("website_url"),
@@ -1012,12 +1226,32 @@ def founder_settings():
             "min_check_size": request.form.get("min_check_size") or 0,
             "actively_raising": 1 if request.form.get("actively_raising") else 0,
             "uid": user_id
-        })
+        }
 
+        # Only update logo_url if a new file was uploaded
+        if logo_url:
+            update_query += ", logo_url = :logo_url"
+            params["logo_url"] = logo_url
+
+        update_query += " WHERE user_id = :uid"
+
+        # Execute Update
+        db.session.execute(text(update_query), params)
         db.session.commit()
 
+        # --- 3. Recalculate Completion Score ---
+        fresh_data = db.session.execute(text("SELECT * FROM founder_profiles WHERE user_id=:uid"), {"uid": user_id}).mappings().first()
+        new_score = calculate_founder_profile_completion_db(fresh_data)
+
+        if fresh_data.profile_completion != new_score:
+            db.session.execute(text("UPDATE founder_profiles SET profile_completion=:s WHERE user_id=:uid"), {"s": new_score, "uid": user_id})
+            db.session.commit()
+
+        flash("Profile updated successfully!", "success")
+        return redirect(url_for("founder_settings"))
+
     # -------------------------------
-    # RE-FETCH AFTER UPDATE
+    # FETCH DATA
     # -------------------------------
     data = db.session.execute(text("""
         SELECT f.*, u.full_name, u.email, u.phone, u.country
@@ -1026,34 +1260,13 @@ def founder_settings():
         WHERE f.user_id = :uid
     """), {"uid": user_id}).mappings().first()
 
-    # -------------------------------
-    # CALCULATE REAL COMPLETION
-    # -------------------------------
-    completion = calculate_founder_profile_completion_db(data)
+    if not data:
+        return redirect(url_for("register", role="founder"))
 
-    if data.profile_completion != completion:
-        db.session.execute(text("""
-            UPDATE founder_profiles
-            SET profile_completion = :score
-            WHERE user_id = :uid
-        """), {"score": completion, "uid": user_id})
-        db.session.commit()
+    return render_template("dashboard/founder_settings.html", data=data)
 
-        # Re-fetch once more to ensure consistency
-        data = db.session.execute(text("""
-            SELECT f.*, u.full_name, u.email, u.phone, u.country
-            FROM founder_profiles f
-            JOIN users u ON u.id = f.user_id
-            WHERE f.user_id = :uid
-        """), {"uid": user_id}).mappings().first()
 
-    # -------------------------------
-    # RENDER
-    # -------------------------------
-    return render_template(
-        "dashboard/founder_settings.html",
-        data=data
-    )
+
 # -------------------------------------------------
 # 🟢 FOUNDER REQUEST VERIFICATION
 # -------------------------------------------------
@@ -1104,7 +1317,7 @@ from sqlalchemy import text
 # 🟢 INVESTOR HOME (OPTIMIZED DEAL FEED)
 # -------------------------------------------------
 # -------------------------------------------------
-# 🟢 INVESTOR HOME (WITH FILTERS)
+# 🟢 INVESTOR HOME (WITH FILTERS & PASSED DEALS)
 # -------------------------------------------------
 @app.route("/investor/home")
 def investor_home():
@@ -1198,15 +1411,16 @@ def investor_home():
     match_status_map = {m.founder_id: m.status for m in existing_matches}
 
     # -------------------------------------------------
-    # 6. BUILD DEAL FEED
+    # 6. BUILD DEAL FEED (UPDATED LOGIC)
     # -------------------------------------------------
-    deal_feed = []
+    deal_feed = []      # List for Active/New deals
+    passed_deals = []   # List for Declined/Passed deals
 
     for f in founders:
         status = match_status_map.get(f.id, "new")
-        if status == "declined":
-            continue
 
+        # --- MOVED CALCULATIONS UP ---
+        # We calculate this for everyone so Passed deals also have data to show in the UI
         pitch_score = f.deck_score or 0
         match_score, match_reasons = calculate_match_score(f, investor, pitch_score)
 
@@ -1217,30 +1431,41 @@ def investor_home():
         if len(m_data) > 1 and float(m_data[1].revenue) > 0:
             growth = int(((mrr - float(m_data[1].revenue)) / float(m_data[1].revenue)) * 100)
 
-        # Threshold (keep signal clean)
-        if match_score >= 30 or status == "saved":
-            deal_feed.append({
-                "founder_id": f.id,
-                "company_name": f.company_name,
-                "tagline": f.tagline,
-                "logo_url": f.logo_url,
-                "sector": f.sector,
-                "stage": f.stage,
-                "location": f.location or f.user_country,
-                "raise_target": f.raise_target,
-                "match_score": match_score,
-                "match_reasons": match_reasons,
-                "mrr": mrr,
-                "growth": growth,
-                "pitch_score": pitch_score,
-                "status": status
-            })
+        # Create Deal Object
+        deal_obj = {
+            "founder_id": f.id,
+            "company_name": f.company_name,
+            "tagline": f.tagline,
+            "logo_url": f.logo_url,
+            "sector": f.sector,
+            "stage": f.stage,
+            "location": f.location or f.user_country,
+            "raise_target": f.raise_target,
+            "match_score": match_score,
+            "match_reasons": match_reasons,
+            "mrr": mrr,
+            "growth": growth,
+            "pitch_score": pitch_score,
+            "status": status
+        }
 
-    # Sort: Saved first → High match score
+        # --- SPLIT INTO LISTS ---
+        if status == "declined":
+            passed_deals.append(deal_obj)
+        
+        # Threshold (keep signal clean)
+        # Only add to main feed if score is good OR it's already saved/new
+        elif match_score >= 30 or status == "saved":
+            deal_feed.append(deal_obj)
+
+    # Sort Active Deals: Saved first → High match score
     deal_feed.sort(
         key=lambda x: (x["status"] == "saved", x["match_score"]),
         reverse=True
     )
+    
+    # Optional: Sort Passed deals by most recently passed (if you had a timestamp, otherwise just by score)
+    passed_deals.sort(key=lambda x: x["match_score"], reverse=True)
 
     # -------------------------------------------------
     # 7. KPI DEFINITIONS (INVESTOR SIGNALS)
@@ -1293,8 +1518,53 @@ def investor_home():
         "dashboard/investor_home.html",
         investor=investor,
         deals=deal_feed,
+        passed_deals=passed_deals, # <--- Added this variable
         kpis=kpis
     )
+
+# -------------------------------------------------
+# 🟢 DEAL ACTIONS: PASS & UNDO
+# -------------------------------------------------
+
+@app.route("/investor/deal/pass/<int:founder_id>")
+def pass_deal(founder_id):
+    if session.get("role") != "investor": return redirect(url_for("login"))
+    user_id = session.get("user_id")
+    
+    investor = db.session.execute(text("SELECT id FROM investor_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
+    if not investor: return redirect(url_for("investor_home"))
+
+    # Upsert: Set status to 'declined'
+    # We use ON DUPLICATE KEY UPDATE to handle both cases (new record or updating existing)
+    db.session.execute(text("""
+        INSERT INTO matches (founder_id, investor_id, match_score, status, ai_reason)
+        VALUES (:fid, :iid, 0, 'declined', 'Manual Pass')
+        ON DUPLICATE KEY UPDATE status = 'declined', updated_at = NOW()
+    """), {"fid": founder_id, "iid": investor.id})
+
+    db.session.commit()
+    flash("Deal moved to Passed list.", "info")
+    return redirect(url_for("investor_home"))
+
+
+@app.route("/investor/deal/undo/<int:founder_id>")
+def undo_pass_deal(founder_id):
+    if session.get("role") != "investor": return redirect(url_for("login"))
+    user_id = session.get("user_id")
+    
+    investor = db.session.execute(text("SELECT id FROM investor_profiles WHERE user_id=:uid"), {"uid": user_id}).fetchone()
+    
+    # Logic: To "Undo", we simply delete the match record.
+    # This resets the deal to "New" because your system treats no record as a "New Deal".
+    db.session.execute(text("""
+        DELETE FROM matches 
+        WHERE founder_id = :fid AND investor_id = :iid AND status = 'declined'
+    """), {"fid": founder_id, "iid": investor.id})
+
+    db.session.commit()
+    flash("Deal restored to main feed.", "success")
+    return redirect(url_for("investor_home"))
+
 
 # -------------------------------------------------
 # 🟢 INVESTOR DEAL VIEW (UPDATED WITH DD)
@@ -1435,6 +1705,9 @@ def investor_deal_view(founder_id):
         }
     )
 
+# -------------------------------------------------
+# 🟢 INVESTOR DEALS (WITH AUTO-SCORE REPAIR)
+# -------------------------------------------------
 @app.route("/investor/deals")
 def investor_deals():
     if session.get("role") != "investor":
@@ -1443,21 +1716,34 @@ def investor_deals():
     user_id = session.get("user_id")
     tab = request.args.get("tab", "interested")
 
-    investor = db.session.execute(
-        text("SELECT id FROM investor_profiles WHERE user_id=:uid"),
+    # 1. FETCH FULL INVESTOR PROFILE (Required for calculation)
+    # We use mappings() to get a dictionary-like object
+    investor_data = db.session.execute(
+        text("SELECT * FROM investor_profiles WHERE user_id=:uid"),
         {"uid": user_id}
-    ).fetchone()
+    ).mappings().first()
 
-    if not investor:
+    if not investor_data:
         return redirect(url_for("register", role="investor"))
 
+    # Helper class to allow dot notation (investor.sector_focus) for the calculation function
+    class EntityObj:
+        def __init__(self, d):
+            for k, v in d.items():
+                setattr(self, k, v)
+
+    investor_obj = EntityObj(investor_data)
+
+    # 2. FETCH DEALS (Updated with logo_url)
     deals = db.session.execute(text("""
         SELECT 
             f.id AS founder_id,
             f.company_name,
+            f.logo_url,        /* <--- Added this field for the logo */
             f.sector,
             f.stage,
             f.location,
+            f.min_check_size,
 
             m.status,
             m.match_score,
@@ -1473,9 +1759,9 @@ def investor_deals():
              WHERE founder_id=f.id AND investor_id=:iid) AS dd_checklist,
 
             GREATEST(
-                m.updated_at,
-                COALESCE((SELECT MAX(created_at) FROM pitch_decks WHERE founder_id=f.id), m.updated_at),
-                COALESCE((SELECT MAX(created_at) FROM traction_metrics WHERE founder_id=f.id), m.updated_at)
+                COALESCE(m.updated_at, '1970-01-01'),
+                COALESCE((SELECT MAX(created_at) FROM pitch_decks WHERE founder_id=f.id), '1970-01-01'),
+                COALESCE((SELECT MAX(created_at) FROM traction_metrics WHERE founder_id=f.id), '1970-01-01')
             ) AS last_activity
 
         FROM matches m
@@ -1484,37 +1770,80 @@ def investor_deals():
           AND m.status = :tab
         ORDER BY last_activity DESC
     """), {
-        "iid": investor.id,
+        "iid": investor_data['id'],
         "tab": tab
     }).mappings().all()
 
+    # 3. HELPER FUNCTIONS
     def dd_progress(checklist_json):
-        if not checklist_json:
-            return 0
+        if not checklist_json: return 0
         try:
             data = json.loads(checklist_json)
             total = len(data)
             done = sum(1 for v in data.values() if v)
             return int((done / total) * 100) if total else 0
-        except Exception:
-            return 0
+        except: return 0
 
     def time_ago(dt):
+        if not dt or (isinstance(dt, str) and dt.startswith('1970')): return "N/A"
+        if isinstance(dt, str):
+            try: dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+            except: return "N/A"
         diff = datetime.utcnow() - dt
-        if diff.days > 0:
-            return f"{diff.days}d ago"
+        if diff.days > 0: return f"{diff.days}d ago"
         hours = diff.seconds // 3600
-        if hours > 0:
-            return f"{hours}h ago"
+        if hours > 0: return f"{hours}h ago"
         return "Just now"
 
+    # 4. ENRICH & AUTO-REPAIR SCORES
     enriched_deals = []
+    updates_needed = False
+
     for d in deals:
+        deal_dict = dict(d) # Create mutable copy
+        
+        # --- AUTO-FIX LOGIC: If score is 0, recalculate it now ---
+        if deal_dict.get('match_score') == 0:
+            # Create a temporary founder object for the calculator
+            founder_mock = EntityObj({
+                'stage': deal_dict.get('stage'),
+                'sector': deal_dict.get('sector'),
+                'location': deal_dict.get('location'),
+                'min_check_size': deal_dict.get('min_check_size')
+            })
+            
+            # Run calculation
+            new_score, new_reason = calculate_match_score(
+                founder_mock, 
+                investor_obj, 
+                deal_dict.get('pitch_score') or 0
+            )
+            
+            # Update local display data
+            deal_dict['match_score'] = new_score
+            
+            # Update Database (Silent Repair)
+            db.session.execute(text("""
+                UPDATE matches 
+                SET match_score = :s, ai_reason = :r 
+                WHERE founder_id = :fid AND investor_id = :iid
+            """), {
+                "s": new_score, 
+                "r": new_reason, 
+                "fid": deal_dict['founder_id'], 
+                "iid": investor_data['id']
+            })
+            updates_needed = True
+
         enriched_deals.append({
-            **d,
+            **deal_dict,
             "dd_progress": dd_progress(d.dd_checklist),
             "last_seen": time_ago(d.last_activity)
         })
+
+    # Commit any repairs we made
+    if updates_needed:
+        db.session.commit()
 
     return render_template(
         "dashboard/investor_deals.html",
@@ -2281,7 +2610,78 @@ def request_investor_verification():
     db.session.commit()
     flash("Verification request submitted for admin review.", "success")
     return redirect(url_for("investor_settings"))
+# -------------------------------------------------
+# 🟢 RECORD INVESTMENT (Finalize Deal)
+# -------------------------------------------------
+@app.route("/investor/record_investment/<int:founder_id>", methods=["POST"])
+def record_investment(founder_id):
+    # 1. Auth Check
+    if session.get("role") != "investor":
+        return redirect(url_for("login"))
 
+    user_id = session.get("user_id")
+    
+    # 2. Get Input
+    try:
+        amount = float(request.form.get("amount", 0))
+    except ValueError:
+        flash("Invalid amount entered.", "error")
+        return redirect(url_for("investor_deal_view", founder_id=founder_id))
+
+    if amount <= 0:
+        flash("Investment amount must be positive.", "warning")
+        return redirect(url_for("investor_deal_view", founder_id=founder_id))
+
+    # 3. Get Investor Profile ID
+    investor = db.session.execute(
+        text("SELECT id FROM investor_profiles WHERE user_id=:uid"),
+        {"uid": user_id}
+    ).fetchone()
+
+    if not investor:
+        flash("Investor profile not found.", "error")
+        return redirect(url_for("investor_home"))
+
+    # 4. Update the Match Record (The Deal)
+    # This logic handles both existing matches (updating them) 
+    # and creating a new one if for some reason it didn't exist yet.
+    
+    # Check if match exists
+    existing_match = db.session.execute(
+        text("SELECT id FROM matches WHERE founder_id=:fid AND investor_id=:iid"),
+        {"fid": founder_id, "iid": investor.id}
+    ).fetchone()
+
+    if existing_match:
+        db.session.execute(text("""
+            UPDATE matches
+            SET status = 'invested',
+                invested_amount = :amt,
+                invested_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :mid
+        """), {
+            "amt": amount,
+            "mid": existing_match.id
+        })
+    else:
+        # Create new entry directly as invested (edge case)
+        db.session.execute(text("""
+            INSERT INTO matches (founder_id, investor_id, match_score, status, invested_amount, invested_at)
+            VALUES (:fid, :iid, 0, 'invested', :amt, NOW())
+        """), {
+            "fid": founder_id, 
+            "iid": investor.id, 
+            "amt": amount
+        })
+
+    db.session.commit()
+
+    # 5. Success Feedback
+    founder_name = db.session.execute(text("SELECT company_name FROM founder_profiles WHERE id=:fid"), {"fid": founder_id}).scalar()
+    flash(f"Successfully invested ${amount:,.0f} in {founder_name}! Added to your Portfolio.", "success")
+    
+    return redirect(url_for("investor_portfolio"))
 # -------------------------------------------------
 # 🛡️ ADMIN – VERIFICATION HUB
 # -------------------------------------------------

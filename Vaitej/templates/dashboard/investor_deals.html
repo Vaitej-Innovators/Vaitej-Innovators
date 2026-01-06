@@ -3,6 +3,83 @@
 <head>
     <title>Deal Rooms | Vaitej Ventures</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .match-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .match-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .dd-progress {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: rgba(0,0,0,0.2);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .dd-bar {
+            width: 60px;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .dd-fill {
+            height: 100%;
+            background: var(--accent-primary, #007bff);
+        }
+        /* Custom Badge Style for Fit */
+        .fit-badge {
+            background: rgba(16, 185, 129, 0.15); 
+            color: #10b981; 
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 4px 10px; 
+            border-radius: 20px; 
+            font-size: 0.85rem; 
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        /* --- LOGO BOX STYLES (Standardized) --- */
+        .logo-box {
+            width: 50px;
+            height: 50px;
+            min-width: 50px; /* Prevent squashing */
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .tab-btn.active {
+            color: white !important;
+            border-bottom-color: var(--accent-primary, #007bff) !important;
+            font-weight: 600;
+        }
+        .tab-btn:hover {
+            color: white !important;
+        }
+    </style>
 </head>
 <body>
 
@@ -12,7 +89,6 @@
 
     <main class="dashboard-content">
 
-        <!-- ================= HEADER ================= -->
         <header class="page-header">
             <div>
                 <h1>Deal Rooms</h1>
@@ -22,26 +98,29 @@
             </div>
         </header>
 
-        <!-- ================= TABS ================= -->
-        <div class="tab-bar" style="margin-bottom:1.5rem;">
+        <div class="tab-bar" style="margin-bottom:1.5rem; display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
             {% for t,label in [
                 ('interested','Active Deals'),
                 ('saved','Watchlist'),
                 ('declined','Passed')
             ] %}
             <a href="{{ url_for('investor_deals', tab=t) }}"
-               class="tab {% if active_tab == t %}active{% endif %}">
+               class="tab-btn {% if active_tab == t %}active{% endif %}"
+               style="text-decoration: none; padding: 0.5rem 1rem; color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all 0.2s;">
                 {{ label }}
             </a>
             {% endfor %}
         </div>
 
-        <!-- ================= BULK ACTION BAR ================= -->
         <form method="post" action="{{ url_for('bulk_update_deals') }}">
 
-            <div class="bulk-bar glass" style="padding:0.75rem; margin-bottom:1rem; display:flex; gap:10px;">
+            {% if active_tab != 'declined' %}
+            <div class="bulk-bar glass" style="padding:0.75rem; margin-bottom:1rem; display:flex; gap:10px; align-items: center;">
+                <span class="text-secondary small" style="margin-right: auto; margin-left: 0.5rem;">Bulk Actions:</span>
+                
                 <button type="submit" name="action" value="declined"
-                        class="btn-outline btn-sm">
+                        class="btn-outline btn-sm text-danger"
+                        onclick="return confirm('Pass on selected deals?')">
                     Pass Selected
                 </button>
 
@@ -50,8 +129,8 @@
                     Archive Selected
                 </button>
             </div>
+            {% endif %}
 
-            <!-- ================= DEAL LIST ================= -->
             <section class="glass" style="padding:1.5rem;">
 
                 {% if deals %}
@@ -59,17 +138,26 @@
                     {% for d in deals %}
                     <div class="match-card" style="margin-bottom:1.4rem;">
 
-                        <!-- Row 1 -->
                         <div style="display:flex; justify-content:space-between; align-items:center;">
 
-                            <div style="display:flex; gap:10px; align-items:flex-start;">
+                            <div style="display:flex; gap:12px; align-items:center;">
+                                {% if active_tab != 'declined' %}
                                 <input type="checkbox"
                                        name="deal_ids"
                                        value="{{ d.founder_id }}"
-                                       style="margin-top:6px;">
+                                       style="cursor: pointer;">
+                                {% endif %}
+
+                                <div class="logo-box">
+                                    {% if d.logo_url %}
+                                        <img src="{{ d.logo_url }}" alt="{{ d.company_name }}">
+                                    {% else %}
+                                        <span style="font-size: 1.5rem;">🚀</span>
+                                    {% endif %}
+                                </div>
 
                                 <div>
-                                    <h4 style="margin-bottom:4px;">
+                                    <h4 style="margin-bottom:4px; font-weight: 600; margin-top: 0;">
                                         {{ d.company_name }}
                                     </h4>
                                     <div class="text-secondary" style="font-size:0.85rem;">
@@ -79,19 +167,17 @@
                             </div>
 
                             <div style="text-align:right;">
-                                <span class="badge badge-success">
-                                    {{ d.match_score }}% Fit
+                                <span class="fit-badge">
+                                    {{ d.match_score|default(0) }}% Fit
                                 </span>
-                                <div class="text-secondary" style="font-size:0.8rem; margin-top:4px;">
+                                <div class="text-secondary" style="font-size:0.8rem; margin-top:6px;">
                                     Pitch: {{ d.pitch_score or "—" }}
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Row 2 : Signals -->
-                        <div style="margin-top:0.75rem; display:flex; gap:16px; align-items:center;">
+                        <div style="margin-top:0.75rem; display:flex; gap:16px; align-items:center; flex-wrap: wrap;">
 
-                            <!-- DD Progress -->
                             <div class="dd-progress">
                                 <div class="dd-bar">
                                     <div class="dd-fill" style="width: {{ d.dd_progress }}%"></div>
@@ -99,25 +185,32 @@
                                 <span>{{ d.dd_progress }}% DD</span>
                             </div>
 
-                            <!-- Status -->
                             {% if d.status == 'interested' %}
-                                <span class="signal info">In Evaluation</span>
+                                <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">In Evaluation</span>
                             {% elif d.status == 'saved' %}
-                                <span class="signal neutral">Watchlist</span>
+                                <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">Watchlist</span>
                             {% elif d.status == 'declined' %}
-                                <span class="signal danger">Passed</span>
+                                <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">Passed</span>
                             {% endif %}
 
-                            <!-- Last Activity -->
-                            <span class="text-secondary" style="font-size:0.75rem;">
+                            <span class="text-secondary" style="font-size:0.75rem; margin-left: auto;">
                                 Last activity: {{ d.last_seen }}
                             </span>
                         </div>
 
-                        <!-- Row 3 : Action -->
-                        <div style="margin-top:1rem; display:flex; justify-content:flex-end;">
+                        <div style="margin-top:1rem; display:flex; justify-content:flex-end; gap: 10px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                            
+                            {% if d.status == 'declined' %}
+                                <a href="{{ url_for('undo_pass_deal', founder_id=d.founder_id) }}" 
+                                   class="btn-outline btn-sm"
+                                   style="display: flex; align-items: center; gap: 5px;">
+                                    <i data-lucide="rotate-ccw" style="width: 14px;"></i> Undo Pass
+                                </a>
+                            {% endif %}
+
                             <a href="{{ url_for('investor_deal_view', founder_id=d.founder_id) }}"
-                               class="btn-primary btn-sm">
+                               class="btn-primary btn-sm"
+                               style="text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; background: var(--accent-primary, #007bff); color: white;">
                                 Open Deal Room
                             </a>
                         </div>
@@ -126,11 +219,16 @@
                     {% endfor %}
 
                 {% else %}
-                    <div class="empty-state">
-                        No deals found in this category.
-                        <div class="text-secondary">
-                            Save or express interest in startups to populate Deal Rooms.
-                        </div>
+                    <div class="empty-state" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                        <i data-lucide="folder-open" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.5;"></i>
+                        <h3 style="font-size: 1.2rem; margin-bottom: 0.5rem;">No deals found here.</h3>
+                        <p style="font-size: 0.9rem;">
+                            {% if active_tab == 'declined' %}
+                                Your passed deals history is clean.
+                            {% else %}
+                                Save or express interest in startups from your <a href="{{ url_for('investor_home') }}" style="color: var(--accent-primary);">Home Feed</a> to populate this room.
+                            {% endif %}
+                        </p>
                     </div>
                 {% endif %}
 
@@ -139,6 +237,10 @@
 
     </main>
 </div>
+
+<script>
+    lucide.createIcons();
+</script>
 
 </body>
 </html>

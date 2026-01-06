@@ -5,4 +5,4 @@ class Config():
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Gemini API key
-    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or "AIzaSyCpXZeMfm9lJOH3iKnVAupPxPHDTqGBh7c"
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or "AIzaSyAOpUPQIkycpa1hSPIsa-8Rwa7kAXa20tQ"

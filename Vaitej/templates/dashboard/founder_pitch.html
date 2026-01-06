@@ -3,6 +3,7 @@
 <head>
     <title>Pitch Hub | Vaitej Ventures</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
 
@@ -28,11 +29,9 @@
                         <h3 style="font-size: 1.1rem; font-weight: 700;">Deck Analysis</h3>
                         <span class="badge badge-neutral">{{ deck.created_at.strftime('%d %b') }}</span>
                     </div>
-                    
                     <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
                         {{ analysis.summary if analysis else deck.feedback_summary }}
                     </p>
-
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
                         <div>
                             <h4 style="color: var(--success); font-weight: 700; font-size: 0.8rem; margin-bottom: 0.5rem; text-transform: uppercase;">Strengths</h4>
@@ -55,27 +54,59 @@
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
                     
-                    <div class="glass" style="padding: 1.5rem; border: 1px solid var(--accent-primary); background: rgba(99,102,241,0.05);">
-                        <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem; font-size: 0.8rem; font-weight: 700;">STEP 1: PREPARE</h4>
-                        <h3 style="margin-bottom: 0.5rem;">VC Simulator</h3>
+                    <div class="glass" style="padding: 1.5rem; border: 1px dashed rgba(255,255,255,0.2);">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h4 style="color: #a8a29e; margin-bottom: 0.5rem; font-size: 0.8rem; font-weight: 700;">PRACTICE MODE</h4>
+                        </div>
+                        <h3 style="margin-bottom: 0.5rem;">Training Simulator</h3>
                         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
-                            Practice answering tough questions generated from your deck's weak points.
+                            Unlimited practice sessions. These are private and <strong>do not</strong> appear in your final investor report.
                         </p>
-                        <a href="{{ url_for('start_qa_session') }}" class="btn-primary" style="width: 100%;">
-                            <i data-lucide="message-square" style="width: 18px; margin-right: 8px;"></i> Start Simulation
+                        
+                        {% if last_simulation %}
+                            <div style="margin-bottom: 1rem; font-size: 0.8rem; color: #888;">
+                                Last score: <strong>{{ last_simulation.session_score }}/100</strong>
+                            </div>
+                        {% endif %}
+
+                        <a href="{{ url_for('start_qa_session', mode='training') }}" class="btn-outline" style="width: 100%;">
+                            <i data-lucide="gamepad-2" style="width: 18px; margin-right: 8px;"></i> 
+                            {% if last_simulation %}Start New Training{% else %}Start Training{% endif %}
                         </a>
                     </div>
 
-                    <div class="glass" style="padding: 1.5rem;">
-                        <h4 style="color: var(--warning); margin-bottom: 0.5rem; font-size: 0.8rem; font-weight: 700;">STEP 2: ANALYZE</h4>
-                        <h3 style="margin-bottom: 0.5rem;">Deep Report</h3>
+                    <div class="glass" style="padding: 1.5rem; border: 1px solid var(--accent-primary); background: rgba(99,102,241,0.05);">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h4 style="color: var(--accent-primary); margin-bottom: 0.5rem; font-size: 0.8rem; font-weight: 700;">OFFICIAL PROCESS</h4>
+                            {% if deck.is_published %}
+                                <i data-lucide="check-circle" style="color: #22c55e; width: 20px;"></i>
+                            {% endif %}
+                        </div>
+                        <h3 style="margin-bottom: 0.5rem;">Investor Q&A</h3>
                         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
-                            Generate a full investment memo combining your deck and simulation performance.
+                            This session is recorded and added to your <strong>Investment Report</strong>. Prepare well.
                         </p>
-                        {% if report %}
-                            <a href="{{ url_for('view_report', deck_id=deck.id) }}" class="btn-outline" style="width: 100%;">View Report</a>
+                        
+                        {% if deck.is_published %}
+                            <a href="{{ url_for('view_report', deck_id=deck.id) }}" class="btn-outline" style="width: 100%;">View Live Report</a>
+                        
+                        {% elif official_qa and official_qa.status == 'completed' %}
+                            <a href="{{ url_for('review_pitch_report', deck_id=deck.id) }}" class="btn-primary" style="width: 100%; background: #22c55e; border-color: #22c55e;">
+                                Review & Publish Report
+                            </a>
+                            <div style="margin-top:10px; text-align:center;">
+                                <a href="{{ url_for('start_qa_session', mode='official') }}" style="font-size:0.8rem; color: #888; text-decoration: underline;">Retake Official Q&A</a>
+                            </div>
+
+                        {% elif official_qa and official_qa.status == 'in_progress' %}
+                            <a href="{{ url_for('founder_qa_interface', session_id=official_qa.id) }}" class="btn-primary" style="width: 100%;">
+                                Resume Official Q&A
+                            </a>
+
                         {% else %}
-                            <a href="{{ url_for('generate_report', deck_id=deck.id) }}" class="btn-outline" style="width: 100%;">Generate Report</a>
+                            <a href="{{ url_for('start_qa_session', mode='official') }}" class="btn-primary" style="width: 100%;">
+                                <i data-lucide="play" style="width: 18px; margin-right: 8px;"></i> Start Official Q&A
+                            </a>
                         {% endif %}
                     </div>
                 </div>
@@ -100,24 +131,18 @@
                 <div style="margin-top: 2rem; border-top: 1px solid var(--border-subtle); padding-top: 1.5rem;">
                     
                     {% if deck.is_published %}
-                        <div style="background: var(--success-bg); color: var(--success); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <div style="background: rgba(34, 197, 94, 0.1); color: #22c55e; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid rgba(34, 197, 94, 0.2);">
                             <i data-lucide="check" style="width: 16px; display: inline-block;"></i> 
-                            <strong>Published</strong>
-                            <div style="font-size: 0.75rem; opacity: 0.8; margin-top: 4px;">To High-Match Investors</div>
+                            <strong>Live</strong>
+                            <div style="font-size: 0.75rem; opacity: 0.9; margin-top: 4px;">Visible to High-Match Investors</div>
                         </div>
                     {% else %}
-                        <p style="font-size: 0.8rem; color: var(--text-tertiary); margin-bottom: 1rem;">
-                            Score > 70 required to publish to Deal Flow.
-                        </p>
-                        {% if deck.deck_score >= 70 %}
-                            <a href="{{ url_for('publish_deck', deck_id=deck.id) }}" class="btn-primary" style="width: 100%; background: var(--success);">
-                                <i data-lucide="rocket" style="width: 16px; margin-right: 8px;"></i> Publish Deck
-                            </a>
-                        {% else %}
-                            <button disabled class="btn-outline" style="width: 100%; opacity: 0.5; cursor: not-allowed;">
-                                Improve Score to Publish
-                            </button>
-                        {% endif %}
+                        <div style="margin-bottom: 1rem;">
+                            <p style="font-size: 0.8rem; color: var(--text-tertiary);">
+                                Status: <strong>Draft</strong>
+                            </p>
+                            <div style="font-size: 0.75rem; color: #888;">Complete Official Q&A to publish</div>
+                        </div>
                     {% endif %}
                     
                     <a href="{{ deck.file_url }}" target="_blank" class="btn-outline" style="width: 100%; margin-top: 1rem;">
@@ -135,7 +160,7 @@
             </div>
             <form action="{{ url_for('upload_pitch') }}" method="POST" enctype="multipart/form-data" style="display: flex; gap: 10px;">
                 <input type="file" name="pitch_deck" accept=".pdf" required style="width: auto;">
-                <button class="btn-primary">Analyze</button>
+                <button class="btn-primary">Analyze & Restart</button>
             </form>
         </div>
 
@@ -148,7 +173,7 @@
             </p>
             <form action="{{ url_for('upload_pitch') }}" method="POST" enctype="multipart/form-data">
                 <input type="file" name="pitch_deck" accept=".pdf" required id="file-upload" hidden onchange="this.form.submit()">
-                <label for="file-upload" class="btn-primary" style="padding: 1rem 2rem;">
+                <label for="file-upload" class="btn-primary" style="padding: 1rem 2rem; cursor: pointer;">
                     Select PDF File
                 </label>
             </form>
@@ -157,5 +182,9 @@
 
     </main>
 </div>
+
+<script>
+    lucide.createIcons();
+</script>
 </body>
 </html>

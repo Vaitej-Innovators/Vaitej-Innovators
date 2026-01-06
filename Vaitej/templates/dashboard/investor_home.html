@@ -3,6 +3,69 @@
 <head>
     <title>Investor Dashboard | Vaitej Ventures</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        /* --- TAB STYLES --- */
+        .tab-nav {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0.5rem;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .tab-btn.active {
+            color: #fff; 
+            border-bottom: 2px solid var(--accent-primary, #007bff);
+        }
+        .tab-btn:hover { color: var(--accent-primary, #007bff); }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* --- PASSED DEALS STYLE --- */
+        .match-card.passed {
+            opacity: 0.7;
+            filter: grayscale(0.6);
+        }
+        .match-card.passed:hover {
+            opacity: 1;
+            filter: grayscale(0);
+        }
+
+        /* --- FIXED LOGO STYLES --- */
+        .logo-box {
+            width: 50px;
+            height: 50px;
+            min-width: 50px; /* Prevents squashing */
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Ensures image fills box without distortion */
+            display: block;
+        }
+
+        .logo-box span {
+            font-size: 1.5rem;
+        }
+    </style>
 </head>
 <body>
 
@@ -12,14 +75,12 @@
 
     <main class="dashboard-content">
 
-        <!-- ================= FLASH / TOAST ================= -->
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% for category, msg in messages %}
-            <div class="toast">{{ msg }}</div>
+            <div class="toast {{ category }}">{{ msg }}</div>
           {% endfor %}
         {% endwith %}
 
-        <!-- ================= HEADER ================= -->
         <header class="page-header">
             <div>
                 <h1>Investor Dashboard</h1>
@@ -29,7 +90,6 @@
             </div>
         </header>
 
-        <!-- ================= KPI STRIP ================= -->
         <section class="metrics-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 2rem;">
 
             <div class="glass metric-card">
@@ -58,7 +118,6 @@
 
         </section>
 
-        <!-- ================= FILTERS ================= -->
         <form method="get" class="glass"
               style="display:flex; gap:12px; padding:0.75rem; margin-bottom:1.75rem; border-radius:12px;">
 
@@ -96,95 +155,140 @@
             {% endif %}
         </form>
 
-        <!-- ================= MAIN GRID ================= -->
         <div class="dashboard-grid" style="grid-template-columns: 2.3fr 1fr;">
 
-            <!-- ================= DEAL FEED ================= -->
             <section class="glass" style="padding: 1.5rem;">
-                <h3 style="margin-bottom: 1.25rem;">Priority Deals</h3>
+                
+                <div class="tab-nav">
+                    <button class="tab-btn active" onclick="openTab(event, 'live-deals')">
+                        🚀 Live Deals ({{ deals|length }})
+                    </button>
+                    <button class="tab-btn" onclick="openTab(event, 'passed-deals')">
+                        🗑️ Passed History ({{ passed_deals|length }})
+                    </button>
+                </div>
 
-                {% if deals %}
-                    {% for deal in deals %}
-                    <div class="match-card" style="margin-bottom: 1.25rem;">
+                <div id="live-deals" class="tab-content active">
+                    {% if deals %}
+                        {% for deal in deals %}
+                        <div class="match-card" style="margin-bottom: 1.25rem;">
 
-                        <!-- Header -->
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="display:flex; gap:12px; align-items:center;">
-                                <div class="logo-box">
-                                    {% if deal.logo_url %}
-                                        <img src="{{ deal.logo_url }}" alt="{{ deal.company_name }}">
-                                    {% else %}
-                                        <span>🚀</span>
-                                    {% endif %}
-                                </div>
-                                <div>
-                                    <h4>{{ deal.company_name }}</h4>
-                                    <div class="text-secondary" style="font-size:0.85rem;">
-                                        {{ deal.sector }} • {{ deal.stage }} • {{ deal.location }}
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="display:flex; gap:12px; align-items:center;">
+                                    
+                                    <div class="logo-box">
+                                        {% if deal.logo_url %}
+                                            <img src="{{ deal.logo_url }}" alt="{{ deal.company_name }}">
+                                        {% else %}
+                                            <span>🚀</span>
+                                        {% endif %}
+                                    </div>
+
+                                    <div>
+                                        <h4 style="margin: 0;">{{ deal.company_name }}</h4>
+                                        <div class="text-secondary" style="font-size:0.85rem; margin-top: 2px;">
+                                            {{ deal.sector }} • {{ deal.stage }} • {{ deal.location }}
+                                        </div>
                                     </div>
                                 </div>
+
+                                <span class="badge badge-success">
+                                    {{ deal.match_score }}% Fit
+                                </span>
                             </div>
 
-                            <span class="badge badge-success">
-                                {{ deal.match_score }}% Fit
-                            </span>
-                        </div>
-
-                        <!-- Metrics -->
-                        <div class="metrics-mini" style="margin-top: 1rem;">
-                            <div>
-                                <span class="label">MRR</span>
-                                <strong>${{ deal.mrr }}</strong>
+                            <div class="metrics-mini" style="margin-top: 1rem;">
+                                <div>
+                                    <span class="label">MRR</span>
+                                    <strong>${{ deal.mrr }}</strong>
+                                </div>
+                                <div>
+                                    <span class="label">Growth</span>
+                                    <strong>{{ deal.growth }}%</strong>
+                                </div>
+                                <div>
+                                    <span class="label">Pitch</span>
+                                    <strong>{{ deal.pitch_score }}</strong>
+                                </div>
                             </div>
-                            <div>
-                                <span class="label">Growth</span>
-                                <strong>{{ deal.growth }}%</strong>
+
+                            <div class="text-secondary"
+                                 style="margin-top:0.75rem; font-style:italic; font-size:0.85rem;">
+                                “{{ deal.match_reasons }}”
                             </div>
-                            <div>
-                                <span class="label">Pitch</span>
-                                <strong>{{ deal.pitch_score }}</strong>
+
+                            <div style="display:flex; gap:10px; margin-top:1rem;">
+                                <a href="{{ url_for('investor_deal_view', founder_id=deal.founder_id) }}"
+                                   class="btn-primary btn-sm">
+                                    View Deal
+                                </a>
+
+                                <a href="{{ url_for('update_investor_match', founder_id=deal.founder_id, action='saved') }}"
+                                   class="btn-outline btn-sm"
+                                   {% if deal.status == 'saved' %}style="background:var(--accent-primary);color:white;"{% endif %}>
+                                    Save
+                                </a>
+
+                                <a href="{{ url_for('pass_deal', founder_id=deal.founder_id) }}"
+                                   class="btn-outline btn-sm text-danger"
+                                   onclick="return confirm('Move this deal to Passed folder?');">
+                                    Pass
+                                </a>
                             </div>
+
                         </div>
-
-                        <!-- Match Reason -->
-                        <div class="text-secondary"
-                             style="margin-top:0.75rem; font-style:italic; font-size:0.85rem;">
-                            “{{ deal.match_reasons }}”
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            No active deals match your criteria.
                         </div>
+                    {% endif %}
+                </div>
 
-                        <!-- Actions -->
-                        <div style="display:flex; gap:10px; margin-top:1rem;">
-                            <a href="{{ url_for('investor_deal_view', founder_id=deal.founder_id) }}"
-                               class="btn-primary btn-sm">
-                                View Deal
-                            </a>
+                <div id="passed-deals" class="tab-content">
+                    {% if passed_deals %}
+                        {% for deal in passed_deals %}
+                        <div class="match-card passed" style="margin-bottom: 1.25rem;">
+                            
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="display:flex; gap:12px; align-items:center;">
+                                    
+                                    <div class="logo-box" style="filter: grayscale(100%);">
+                                        {% if deal.logo_url %}
+                                            <img src="{{ deal.logo_url }}">
+                                        {% else %}
+                                            <span>🚫</span>
+                                        {% endif %}
+                                    </div>
 
-                            <a href="{{ url_for('update_investor_match', founder_id=deal.founder_id, action='saved') }}"
-                               class="btn-outline btn-sm"
-                               {% if deal.status == 'saved' %}style="background:var(--accent-primary);color:white;"{% endif %}>
-                                Save
-                            </a>
+                                    <div>
+                                        <h4 class="text-secondary" style="margin: 0;">{{ deal.company_name }}</h4>
+                                        <div class="text-secondary" style="font-size:0.85rem; margin-top: 2px;">
+                                            {{ deal.sector }} • Passed
+                                        </div>
+                                    </div>
+                                </div>
+                                <span class="badge" style="background:#555;">Archived</span>
+                            </div>
 
-                            <a href="{{ url_for('update_investor_match', founder_id=deal.founder_id, action='declined') }}"
-                               class="btn-outline btn-sm text-danger"
-                               onclick="return confirm('Remove this deal from your feed?');">
-                                Pass
-                            </a>
+                            <div style="margin-top:1rem; border-top:1px solid #eee; padding-top:0.5rem;">
+                                <a href="{{ url_for('undo_pass_deal', founder_id=deal.founder_id) }}"
+                                   class="btn-outline btn-sm" style="width:100%; text-align:center;">
+                                    ↺ Undo & Move Back to Feed
+                                </a>
+                            </div>
+
                         </div>
-
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="empty-state">
-                        No high-signal deals right now.
-                        <div class="text-secondary">
-                            Filters may be too strict or new founders are onboarding.
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            Trash is empty. No passed deals.
                         </div>
-                    </div>
-                {% endif %}
+                    {% endif %}
+                </div>
+
             </section>
 
-            <!-- ================= ALERTS ================= -->
             <aside class="glass" style="padding: 1.5rem;">
                 <h4>Momentum Alerts</h4>
                 <ul class="alert-list">
@@ -201,6 +305,30 @@
 
     </main>
 </div>
+
+<script>
+    function openTab(evt, tabName) {
+        var i, tabcontent, tablinks;
+        
+        // Hide all tab content
+        tabcontent = document.getElementsByClassName("tab-content");
+        for (i = 0; i < tabcontent.length; i++) {
+            tabcontent[i].style.display = "none";
+            tabcontent[i].classList.remove("active");
+        }
+        
+        // Remove active class from buttons
+        tablinks = document.getElementsByClassName("tab-btn");
+        for (i = 0; i < tablinks.length; i++) {
+            tablinks[i].className = tablinks[i].className.replace(" active", "");
+        }
+        
+        // Show current tab and add active class to button
+        document.getElementById(tabName).style.display = "block";
+        document.getElementById(tabName).classList.add("active");
+        evt.currentTarget.className += " active";
+    }
+</script>
 
 </body>
 </html>
