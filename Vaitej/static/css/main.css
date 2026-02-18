@@ -1012,3 +1012,139 @@ textarea:focus {
     gap: 0.75rem;
 }
 
+/* =========================================
+   INSTITUTIONAL "BIG TECH" DESIGN
+   ========================================= */
+
+.institutional-tech {
+    background-color: #000 !important; /* Pure Black Depth */
+    color: #fff !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --- Tech Nav --- */
+.tech-nav {
+    position: fixed;
+    top: 0; width: 100%; z-index: 1000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(20px);
+}
+
+.nav-container {
+    max-width: 1400px; margin: 0 auto;
+    padding: 1.5rem 2rem;
+    display: flex; justify-content: space-between; align-items: center;
+}
+
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: 2px; font-size: 0.9rem; }
+.brand img { height: 24px; filter: grayscale(1) brightness(2); }
+.brand .dim { color: #64748b; font-weight: 300; }
+
+.btn-minimal {
+    padding: 0.6rem 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+/* --- Hero Section --- */
+.hero-tech {
+    height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
+}
+
+.hero-inner { max-width: 1100px; width: 100%; padding: 0 1rem; }
+
+.eyebrow {
+    color: #6366f1; /* Indigo Accent */
+    font-size: 0.75rem; letter-spacing: 5px; font-weight: 800;
+    margin-bottom: 2rem; display: block;
+}
+
+.hero-title {
+    font-size: clamp(3.5rem, 8vw, 7rem);
+    line-height: 0.9; font-weight: 800; letter-spacing: -4px;
+    margin-bottom: 2.5rem;
+}
+
+.accent-text { color: #fff; opacity: 0.35; } 
+
+.hero-subtitle {
+    max-width: 650px; margin: 0 auto 5rem;
+    font-size: 1.25rem; color: #94a3b8; line-height: 1.6;
+}
+
+/* --- Role Terminals --- */
+.hero-actions-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
+}
+
+.role-terminal {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 3.5rem; text-align: left;
+    border-radius: 4px; transition: 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.role-terminal:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: #fff;
+    transform: translateY(-8px);
+}
+
+.terminal-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 1.5rem; color: #6366f1;
+}
+
+.terminal-header span { font-weight: 800; font-size: 0.85rem; letter-spacing: 2px; }
+
+.role-terminal p { color: #94a3b8; font-size: 1.05rem; margin-bottom: 2rem; }
+
+.terminal-footer { font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; text-transform: uppercase; }
+
+/* --- Specs Grid --- */
+.specs-section {
+    max-width: 1400px; margin: 10rem auto; padding: 0 2rem;
+}
+
+.section-label {
+    font-size: 0.7rem; letter-spacing: 4px; color: #64748b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 1rem; margin-bottom: 5rem;
+}
+
+.specs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4rem; }
+
+.spec-card { border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 2rem; }
+.index { font-size: 0.7rem; color: #6366f1; font-weight: 800; margin-bottom: 1.5rem; display: block; }
+.spec-card h4 { font-size: 1.75rem; font-weight: 800; margin-bottom: 1.5rem; }
+.spec-card p { color: #94a3b8; font-size: 1.1rem; line-height: 1.7; }
+
+/* --- Footer CTA --- */
+.tech-footer { padding: 10rem 2rem 5rem; text-align: center; }
+
+.footer-box {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 8rem 2rem; max-width: 1000px; margin: 0 auto 5rem;
+    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.05), transparent);
+}
+
+.footer-box h3 { font-size: 3rem; font-weight: 800; margin-bottom: 3.5rem; letter-spacing: -2px; }
+
+.footer-btns { display: flex; gap: 1.5rem; justify-content: center; }
+
+.btn-solid {
+    padding: 1.25rem 3.5rem; background: #fff; color: #000;
+    font-weight: 800; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px;
+}
+
+.btn-outline-white {
+    padding: 1.25rem 3.5rem; border: 1px solid #fff; color: #fff;
+    font-weight: 800; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px;
+}
