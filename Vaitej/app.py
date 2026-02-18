@@ -21,11 +21,14 @@ from config import Config
 
 from datetime import date, timedelta, datetime
 import os, time, json,csv, io
-from google import genai
+
 from google.genai import types
 import json
-
-
+import boto3
+from google.genai import Client
+# Then update your get_ai_client function:
+def get_ai_client():
+    return Client(api_key=app.config.get("GEMINI_API_KEY"))
 # -------------------------------------------------
 # APP SETUP
 # -------------------------------------------------
